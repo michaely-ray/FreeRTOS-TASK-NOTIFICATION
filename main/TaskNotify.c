@@ -3,48 +3,52 @@
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
+#include "freertos/event_groups.h"
 
-const int SET_GPIO = 2;
+uint count = 0;
 
-TaskHandle_t receiverHandler;
+TaskHandle_t handler1;
+TaskHandle_t handler2;
 
-void handleWifi(void *params)
+void task1(void *params)
 {
-    uint32_t countLed = 0;
-
+    
     while (true)
-    {
-        countLed ++;
-        gpio_pad_select_gpio(SET_GPIO);
-        gpio_set_direction(SET_GPIO, GPIO_MODE_OUTPUT);
-        xTaskNotify(receiverHandler, countLed, eSetValueWithOverwrite);
-        gpio_set_level((gpio_num_t)SET_GPIO, 1);
-        vTaskDelay(2000/ portTICK_PERIOD_MS);
+    { 
+        // printf("COUNT1: %d \n\n", count);
 
-        printf("\n\nGET IP \n\n"); 
-        printf("\n\nMQTT Start\n\n");
-
+        // if (ulTaskNotifyTake( pdFALSE, portMAX_DELAY))
+        if (xTaskNotifyWait(0xffffffff, 0, NULL, portMAX_DELAY))
+        {
+            printf("COUNT1: %d \n\n", count);
+            count++;
+            vTaskDelay(1000/ portTICK_PERIOD_MS);
+            xTaskNotify(handler2, 0, eSetValueWithOverwrite);
+        }
     }
 }
-void statusLed(void *params)
-{
-    uint32_t rxInt;
 
+void task2(void *params)
+{
     while (true)
-    {
-        gpio_pad_select_gpio(SET_GPIO);
-        gpio_set_direction(SET_GPIO, GPIO_MODE_OUTPUT);
-        xTaskNotifyWait(0xffffffff, 0, &rxInt, portMAX_DELAY);
-        gpio_set_level((gpio_num_t)SET_GPIO, 0);
-        
-        printf("\n---- %d\n", rxInt);
-        vTaskDelay(2000/ portTICK_PERIOD_MS);
+    { 
+        // printf("COUNT2: %d \n\n", count);
+
+        if (xTaskNotifyWait( 0xffffffff, 0, NULL, portMAX_DELAY))
+        {
+        printf("COUNT2: %d \n\n", count);
+        count++;
+        vTaskDelay(1000/ portTICK_PERIOD_MS);
+        xTaskNotify(handler1, 0, eSetValueWithOverwrite);
+        }
     }
 }
+
+
 void app_main(void)
 {
-    xTaskCreate(&handleWifi, "handleWIFI", 2048, NULL, 2, NULL);
-    xTaskCreate(&statusLed, "MQTT Connected", 2048, NULL, 2, &receiverHandler);
+  xTaskCreate(&task1, "COUNTER 1", 2048, NULL, configMAX_PRIORITIES-1, &handler1);
+  xTaskCreate(&task2, "COUNTER 2", 2048, NULL, configMAX_PRIORITIES-1, &handler2);
+  xTaskNotify(handler1, count, eSetBits);
 
 }
